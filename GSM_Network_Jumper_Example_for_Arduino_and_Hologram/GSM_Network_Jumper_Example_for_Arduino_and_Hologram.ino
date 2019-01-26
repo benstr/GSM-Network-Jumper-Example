@@ -6,17 +6,19 @@
  * Antenna
  * Hologram SIM card
  Created 12 Dec 2018
+ Updated 26 Jan 2019
  by Benstr
 */
 
 // libraries
 #include <MKRGSM.h>
 
-// initialize the library instance
+// initialize the library instan
 GSM gsmAccess;     // include a 'true' parameter to enable debugging
 GSMScanner scannerNetworks;
 GSMModem modemTest;
 GPRS gprs;
+GSMClient client;
 
 // Save data variables
 String IMEI = "";
@@ -25,6 +27,9 @@ String IMEI = "";
 bool connected = false;
 
 void setup() {
+  // Reset the ublox module
+  modemTest.begin();
+  
   // baud rate used for both Serial ports
   unsigned long baud = 115200;
   Serial.begin(baud);
@@ -34,22 +39,8 @@ void setup() {
   }
 
   Serial.println("Hologram GSM Network Jumper");
-  Serial.println("setting up connection....");
-  
-  scannerNetworks.begin();
 
-  // Start GSM shield
-  // This will connect to the last connected carrier
-  // If the last network was 2G the modem will favor a similar 3G  
-  while (!connected) {
-    if ((gsmAccess.begin() == GSM_READY) &&
-        (gprs.attachGPRS("hologram", " ", "") == GPRS_READY)) {
-      connected = true;
-    } else {
-      Serial.println("Not connected");
-      delay(1000);
-    }
-  }
+  scannerNetworks.begin();
 
   // get modem parameters
   // IMEI, modem unique identifier
@@ -61,46 +52,66 @@ void setup() {
   }
 
   // allowing time for the slower 2G network to be scanned
-  delay(3000);
+  delay(5000);
 
-  // scan for existing networks, displays a list of networks
-  Serial.println("Scanning available networks. May take a few minutes.");
-  Serial.println(scannerNetworks.readNetworks());
-
-  printCarrierInfo();
+  Serial.println();
+  Serial.println("Ready to Connect:");
+  Serial.println("Send 'netz' to see all available networks");
+  Serial.println("Send 'att' to connect to AT&T 3G");
+  Serial.println("Send 'tmo3' to connect to T-Mobile 3G");
+  Serial.println("Send 'tmo2' to connect to T-Mobile 2G (if available)");
 }
 
 void loop() {
+  // if there are incoming bytes available
+  // from the server, read them and print them:
+  while (client.available()) {
+    char c = client.read();
+    Serial.print(c);
+  }
+
+  while (SerialGSM.available()) {
+    Serial.print(SerialGSM.read());
+  }
+  
   if (Serial.available()) {
     String command = Serial.readString();
-    //Serial.print(command);
 
     if (command.indexOf("att") >= 0) 
     {
+      Serial.print(command);
       Serial.println();
       Serial.println("Jumping to AT&T 3G");
       jumpCarrier(String("AT+COPS=1,2,\"310410\",2\r\n"));
     } 
     else if (command.indexOf("tmo3") >= 0)
     {
+      Serial.print(command);
       Serial.println();
       Serial.println("Jumping to T-Mobile 3G");
       jumpCarrier(String("AT+COPS=1,2,\"310260\",2\r\n"));
     }
     else if (command.indexOf("tmo2") >= 0)
     {
+      Serial.print(command);
       Serial.println();
       Serial.println("Jumping to T-Mobile 2G");
       jumpCarrier(String("AT+COPS=1,2,\"310260\",0\r\n"));
     }
-    else
+    else if (command.indexOf("netz") >= 0)
+    {
+      Serial.print(command);
+      Serial.println();
+      // scan for existing networks, displays a list of networks
+      Serial.println("Scanning available networks. This may take a few minutes.");
+      //scannerNetworks.begin();
+      Serial.println(scannerNetworks.readNetworks());
+      Serial.println("Network scan complete. If there are no networks scan again.");
+    }
+    else if (command.indexOf("at+") >= 0 || command.indexOf("AT+") >= 0)
     {
       SerialGSM.write(command.c_str());
     }
-  }
-
-  if (SerialGSM.available()) {
-    Serial.write(SerialGSM.read());
   }
 }
 
@@ -131,6 +142,8 @@ bool jumpCarrier(String network)
     return good;
     
   } while(good != false);
+
+  Serial.println("Error when joining");
 }
 
 void printCarrierInfo()
@@ -157,6 +170,7 @@ bool sendGSMCommand(String command)
     if(SerialGSM.available())
     {
       response = SerialGSM.readString();
+      Serial.println(response);
     }
   } while (response.indexOf("OK") < 0);
 
